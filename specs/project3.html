@@ -1,0 +1,532 @@
+<html><head>
+  <meta http-equiv="content-type" content="text/html; charset=windows-1252">
+  <link rel="stylesheet" type="text/css" href="project3_files/style.css">
+
+  <style>
+   table {
+     font-family: lucida grande, verdana, sans-serif;
+     font-size: 12px;
+   }
+   .update {
+     color: red;
+   }
+  </style>
+  <title>CC3 2015 Project 3</title>
+</head>
+
+<body>
+  <div class="header">
+    <h1>CC3 2015 Project 3: MapReduce</h1>
+    <big>TA: Luis Jimenez</big><br>
+    <big>Due April 26th @ 23:55 </big></div>
+
+  <div class="content">
+
+    <h2>Clarifications/Reminders</h2>
+    <ul>
+    <li> Start Early! </li>
+    <li> <strong>Make sure you read through the project specs before starting, especially the Spark references at the bottom.</strong> </li>
+    <li> You will <b>test your code on the computers in Lab 215</b>, the project will be graded on those computers.</li>
+    </ul>
+
+    <h2>Table of Contents</h2>
+    <ul>
+      <li><a href="#goals">Goals</a></li>
+      <li><a href="#background">Background</a></li>
+      <li><a href="#getting-started">Getting Started</a></li>
+      <li><a href="#debugging">Debugging/Testing</a></li>
+      <li><a href="#grading">Grading</a></li>
+      <li><a href="#spark-notes">Spark Notes</a></li>
+      </ul>
+
+
+    <h3 id="goals">Goals</h3>
+    <p> The goal of this project is to get you familiar with the
+      <a href="http://en.wikipedia.org/wiki/MapReduce">MapReduce</a> programming model using the
+      <a href="https://spark.apache.org/">Apache Spark</a> framework. The the project will give you an opportunity
+      to turn breadth-first traversal (an algorithm with which you're hopefully already familiar) into a format that is
+      compatible with the MapReduce framework. We hope that by doing this project you will gain an appreciation for the
+      MapReduce programming model, and at the same time pick up a very marketable skill. </p>
+
+    <h3 id="background">Background</h3>
+
+    <h4>Strongly Solving Puzzles</h4>
+    <p>One-player, reversible puzzles are lots of fun; popular examples you may have played yourself include <a href="https://en.wikipedia.org/wiki/Rubik%27s_Cube">Rubik's™ cube</a> and <a href="https://en.wikipedia.org/wiki/Sliding_puzzle">sliding  puzzles</a>, like <a href="https://en.wikipedia.org/wiki/Rush_Hour_%28board_game%29">Rush Hour</a>, <a href="https://en.wikipedia.org/wiki/Klotski">Klotski</a> and the <a href="https://en.wikipedia.org/wiki/15_puzzle">Fifteen puzzle</a>. These puzzles have the property that you can get from any <strong>position</strong>
+ (a particular unique configuration of the puzzle) to another; there are
+ no "dead ends". In this project, you will write a breadth-first  solver
+ that starts from the single <strong>solution</strong> position, and walks the graph, recording every <em>new</em> position it reaches (and how many moves it took to get there, we call that the <strong>level</strong>). Unlike  breadth-first <em>search</em>, in which you stop when you've found a <em>particular</em> position, here you're going to exhaustively visit the <em>entire</em> graph (this is called <strong><a href="https://en.wikipedia.org/wiki/Solved_game">strongly solving</a></strong>). To do this, we keep track of two mappings (which in Python, are dictionaries):</p>
+    <ul>
+      <li><code>pos_to_level</code>: Given a <em>position</em>, what is its <em>level</em>? (when you're all done, this is the only mapping we care about, and you'll write this to a text file)</li>
+      <li><code>level_to_pos</code>: Given a <em>level</em>, what are all the <em>positions</em>? (we'll use this information in the process of strongly solving the puzzle, but we don't need it afterwards)</li>
+    </ul>
+    <p>For the purpose of this project, we are going to be solving the generalized <a href="https://en.wikipedia.org/wiki/15_puzzle">Fifteen puzzle</a> (<em>Width</em> x <em>Height</em>), but we'll give you all the code you need for this particular game.  With a smaller puzzle (small values of <em>Width</em> and <em>Height</em>), it should also be easier for
+      you to verify the correctness of your output. Of course, you can try larger parameters if you have enough time, and
+      space on your hard drive.</p>
+
+    <h4><a href="https://en.wikipedia.org/wiki/Breadth-first_search">Breadth-First</a> Solver</h4>
+
+    <p>Here is our generic breadth-first solver in Python. It takes in a <code>puzzle</code>, and a <code>max_level</code> as arguments. The parameter <code>max_level</code>
+  is used to control how far the solver should solve (if it's left out, 
+or set to -1, the solver will visit every position in the puzzle graph).
+ Here, the parameter <code>puzzle</code> is an object with two important methods:</p>
+    <ul>
+      <li><code>children()</code> -  returns a list of all the neighboring positions.</li>
+      <li><code>solution()</code> -  returns the single solution position.</li>
+    </ul>
+    <pre class="output">level_to_pos = {}
+pos_to_level = {}
+
+<span class="input">def</span> solve(puzzle, max_level=-1):
+    <span class="comment">"""BF visit the entire puzzle graph, build level_to_pos, pos_to_level structures."""</span>
+    solution = puzzle.solution()
+    level = 0
+    level_to_pos[level] = [solution] <span class="comment">### level 0 consists of a single solution </span>
+    pos_to_level[solution] = level
+
+<span class="comment">    ### While there are still positions on the frontier
+    ### (seen for the first time in the last iteration)
+</span>    <span class="input">while</span> level_to_pos[level] and (max_level==-1 or level &lt; max_level):
+        level += 1
+        level_to_pos[level] = []
+<span class="comment">        ### For every position on the last level (these farthest-away positions are the "frontier")
+</span>        <span class="input">for</span> position <span class="input">in</span> level_to_pos[level-1]:
+<span class="comment">            ### For every child of those frontier positions
+</span>            <span class="input">for</span> child <span class="input">in</span> position.children():
+<span class="comment">                ### If it's the first time we've seen this child
+</span>                <span class="input">if</span> child <span class="input">not in</span> pos_to_level:
+                    <span class="comment">### Update the mappings to remember it, and it will be part of the new frontier</span>
+                    pos_to_level[child] = level
+                    level_to_pos[level].append(child)
+
+    <span class="input">del</span> level_to_pos[level] <span class="comment">### the last level is always empty, so remove it.</span></pre>
+
+    <h4>Example using the <a href="http://youtu.be/qtg9pSJsRSg">3- and 5-gallon "Die Hard 3" puzzle</a></h4>
+    <p><img src="project3_files/Diehard35nolabel.png" alt="Diehard53 Puzzle" align="left" height="168" width="107">
+ Imagine you have a number (between 0 and 8, inclusive) that you can 
+increase or decrease by 3 or 5, as long as it never gets below 0 or 
+above 8. The goal of the game is to get to 0. This is the opposite of 
+the "Die Hard 3" puzzle where the goal was to start at 0 and fill and 
+empty 3- and 5-gallon jugs to get to 4. The overall game graph is shown 
+on the left; you might take a second to convince yourself that this is 
+every position that exists, and that the edges connecting positions are 
+the only connections between positions that are possible:</p>
+    <p>If we run our breadth-first solver algorithm on this, here's what would happen. Note that during the last <code>level=5</code> iteration, it visits all the children of the frontier <code>[4]</code> and finds <code>7</code> and <code>1</code>,
+ but they've both been seen before, so there are no new positions added 
+to the frontier, and the next iteration breaks out of the <code>while</code> loop.<br clear="all"></p>
+    <table border="1" width="100%">
+      <tbody><tr>
+        <th scope="col">&nbsp;</th>
+        <th scope="col"><code>level = 0</code>, before <code>while</code></th>
+        <th scope="col">Known graph so far</th>
+        <th scope="col">After <code>level = 1</code></th>
+        <th scope="col">Known graph so far</th>
+        <th scope="col">After <code>level = 2</code></th>
+        <th scope="col">Known graph so far</th>
+        <th scope="col">After <code>level = 3</code></th>
+        <th scope="col">Known graph so far</th>
+        <th scope="col">After <code>level = 4</code></th>
+        <th scope="col">Final graph</th>
+      </tr>
+      <tr>
+        <th scope="row"><code>level_to_pos[0]</code></th>
+        <td align="center"><code>[0]</code></td>
+        <td rowspan="15" align="center" valign="bottom"><img src="project3_files/Diehard35level0.png" alt="Diehard53 Puzzle" height="177" width="124"></td>
+        <td align="center"><code>[0]</code></td>
+        <td rowspan="15" align="center" valign="bottom"><img src="project3_files/Diehard35level1.png" alt="Diehard53 Puzzle" height="177" width="147"></td>
+        <td align="center"><code>[0]</code></td>
+        <td rowspan="15" align="center" valign="bottom"><img src="project3_files/Diehard35level2.png" alt="Diehard53 Puzzle" height="177" width="147"></td>
+        <td align="center"><code>[0]</code></td>
+        <td rowspan="15" align="center" valign="bottom"><img src="project3_files/Diehard35level3.png" alt="Diehard53 Puzzle" height="177" width="147"></td>
+        <td align="center"><code>[0]</code></td>
+        <td rowspan="15" align="center" valign="bottom"><img src="project3_files/Diehard35level4.png" alt="Diehard53 Puzzle" height="177" width="147"></td>
+      </tr>
+      <tr>
+        <th scope="row"><code>level_to_pos[1]</code></th>
+        <td align="center"><code></code></td>
+        <td align="center"><code>[5, 3]</code></td>
+        <td align="center"><code>[5, 3]</code></td>
+        <td align="center"><code>[5, 3]</code></td>
+        <td align="center"><code>[5, 3]</code></td>
+      </tr>
+      <tr>
+        <th scope="row"><code>level_to_pos[2]</code></th>
+        <td align="center"><code></code></td>
+        <td align="center"><code></code></td>
+        <td align="center"><code>[2, 8, 6]</code></td>
+        <td align="center"><code>[2, 8, 6]</code></td>
+        <td align="center"><code>[2, 8, 6]</code></td>
+      </tr>
+      <tr>
+        <th scope="row"><code>level_to_pos[3]</code></th>
+        <td align="center"><code></code></td>
+        <td align="center"><code></code></td>
+        <td align="center"><code></code></td>
+        <td align="center"><code>[7, 1]</code></td>
+        <td align="center"><code>[7, 1]</code></td>
+      </tr>
+      <tr>
+        <th scope="row"><code>level_to_pos[4]</code></th>
+        <td align="center"><code></code></td>
+        <td align="center"><code></code></td>
+        <td align="center"><code></code></td>
+        <td align="center"><code></code></td>
+        <td align="center"><code>[4]</code></td>
+      </tr>
+      <tr>
+        <th scope="row" bgcolor="#333333"><code></code></th>
+        <td align="center" bgcolor="#333333"><code></code></td>
+        <td align="center" bgcolor="#333333"><code></code></td>
+        <td align="center" bgcolor="#333333"><code></code></td>
+        <td align="center" bgcolor="#333333"><code></code></td>
+        <td align="center" bgcolor="#333333"><code></code></td>
+      </tr>
+      <tr>
+        <th scope="row"><code>pos_to_level[0]</code></th>
+        <td align="center"><code>0</code></td>
+        <td align="center"><code>0</code></td>
+        <td align="center"><code>0</code></td>
+        <td align="center"><code>0</code></td>
+        <td align="center"><code>0</code></td>
+      </tr>
+      <tr>
+        <th scope="row"><code>pos_to_level[1]</code></th>
+        <td align="center"><code></code></td>
+        <td align="center"><code></code></td>
+        <td align="center"><code></code></td>
+        <td align="center"><code>3</code></td>
+        <td align="center"><code>3</code></td>
+      </tr>
+      <tr>
+        <th scope="row"><code>pos_to_level[2]</code></th>
+        <td align="center"><code></code></td>
+        <td align="center"><code></code></td>
+        <td align="center"><code>2</code></td>
+        <td align="center"><code>2</code></td>
+        <td align="center"><code>2</code></td>
+      </tr>
+      <tr>
+        <th scope="row"><code>pos_to_level[3]</code></th>
+        <td align="center"><code></code></td>
+        <td align="center"><code>1</code></td>
+        <td align="center"><code>1</code></td>
+        <td align="center"><code>1</code></td>
+        <td align="center"><code>1</code></td>
+      </tr>
+      <tr>
+        <th scope="row"><code>pos_to_level[4]</code></th>
+        <td align="center"><code></code></td>
+        <td align="center"><code></code></td>
+        <td align="center"><code></code></td>
+        <td align="center"><code></code></td>
+        <td align="center"><code>4</code></td>
+      </tr>
+      <tr>
+        <th scope="row"><code>pos_to_level[5]</code></th>
+        <td align="center"><code></code></td>
+        <td align="center"><code>1</code></td>
+        <td align="center"><code>1</code></td>
+        <td align="center"><code>1</code></td>
+        <td align="center"><code>1</code></td>
+      </tr>
+      <tr>
+        <th scope="row"><code>pos_to_level[6]</code></th>
+        <td align="center"><code></code></td>
+        <td align="center"><code></code></td>
+        <td align="center"><code>2</code></td>
+        <td align="center"><code>2</code></td>
+        <td align="center"><code>2</code></td>
+      </tr>
+      <tr>
+        <th scope="row"><code>pos_to_level[7]</code></th>
+        <td align="center"><code></code></td>
+        <td align="center"><code></code></td>
+        <td align="center"><code></code></td>
+        <td align="center"><code>3</code></td>
+        <td align="center"><code>3</code></td>
+      </tr>
+      <tr>
+        <th scope="row"><code>pos_to_level[8]</code></th>
+        <td align="center"><code></code></td>
+        <td align="center"><code></code></td>
+        <td align="center"><code>2</code></td>
+        <td align="center"><code>2</code></td>
+        <td align="center"><code>2</code></td>
+      </tr>
+    </tbody></table>
+    <br>
+    <hr>
+    <h3 id="getting-started">Getting started</h3>
+
+<p>As mentioned above, we are going to be solving the generalized <a href="https://en.wikipedia.org/wiki/15_puzzle">Fifteen puzzle</a>, which we call the Sliding puzzle (with input parameters <em>width</em> and <em>height</em>).
+ 
+
+This puzzle consists of numbered tiles in a random ordering with one 
+tile missing. The objective of the game to place the tiles in order as 
+shown in the image below, for the 3x3 case. </p>
+<img style="height:20%;width:auto" src="project3_files/sliding_puzzle.png">
+<p>
+If you've never played the game before, it might be helpful (and fun!) to try it <a href="http://mypuzzle.org/sliding">here</a>. That website allows you to play a 3x3, 4x4, or 5x5 puzzle.
+</p>
+
+<h4>Starter Code</h4>
+    <p>To get started on the project, you are being given some code along with this specification.</p>
+
+    <p>The file you will need to modify and submit is:</p>
+
+    <ul>
+      <li><code>SlidingBfsSpark.py</code> is where you will put your MapReduce job to solve a (<em>Width</em> x <em>Height</em>) Sliding puzzle
+      </li>
+      <li><code>proj2-1.txt</code> is where you will put your answers to the <a href="#followup-questions">follow up questions</a>.
+      </li>
+    </ul>
+
+    <p>You are free (and encouraged) to define and implement additional helper functions, but they must be in <code>SlidingBfsSpark.py</code>.  <b>Changes you
+      make to any other files will be overwritten when we grade your project.</b> </p>
+
+    <p>The rest of the files are part of the framework and should not be modified. However, you will need to look
+      at them as well. </p>
+
+    <ul>
+      <li><code>Makefile</code> defines the configurations for the run 
+commands including the size of the sliding puzzle, and the level of 
+parallelism to use. Please look at this file to see how Spark is being 
+invoked on your code.</li>
+      <li><code>SlidingBfsReference.py</code> contains the iterative 
+breadth-first search implementation of a Sliding puzzle solver described
+ above. You can use this to help verify the correctness of your output 
+and help brainstorm your MapReduce algorithm. </li>
+      <li><code>Sliding.py</code> defines helper functions to produce 
+solutions and children of WxH Sliding puzzle "objects" (which are really
+ just Python tuples).</li>
+    </ul>
+
+
+    <h3>Your Job</h3>
+
+    <h4>Your task will be to implement an iterative MapReduce job to solve the general Sliding puzzle.</h4>
+
+    <p>As described above, this MapReduce job will take as input a <code>width</code> and <code>height</code>
+ describing a Sliding puzzle. Using the solution, it will repeatedly 
+expand the BFS tree, and generate a mapping between every position and 
+the level at which it is in the BFS tree.</p><p>
+
+</p><p> We represent a Sliding puzzle as a Python tuple of strings. Each
+ tile is an alphabetic character and the empty space is represented with
+ a hyphen <code>'-'</code>.</p>
+
+    <p>Therefore, after running your MapReduce job, we expect your 
+program to produce a text file of the following form. (for example, for a
+ 2x2 case):</p>
+	<pre>0 ('A', 'B', 'C', '-')
+1 ('A', '-', 'C', 'B')
+1 ('A', 'B', '-', 'C')
+2 ('-', 'A', 'C', 'B')
+2 ('-', 'B', 'A', 'C')
+3 ('B', '-', 'A', 'C')
+3 ('C', 'A', '-', 'B')
+4 ('B', 'C', 'A', '-')
+4 ('C', 'A', 'B', '-')
+5 ('B', 'C', '-', 'A')
+5 ('C', '-', 'B', 'A')
+6 ('-', 'C', 'B', 'A')	</pre>
+
+    <p>Your output is not required to be sorted by level as ours is, but
+ you might find it helpful for debugging. If it is sorted, you could use
+ a utility such as <code>diff</code> (or <code>vimdiff</code>) to easily catch any errors. If you have never used <code>diff</code> before, <a href="http://www.computerhope.com/unix/udiff.htm" target="_blank">this</a> article does a good job of explaining its usage along with great examples.</p>
+
+      <p id="attack"> Here's a recommended plan of attack:</p>
+      <ul>
+	<li>Look at the <code>SlidingBfsReference.py</code> implementation and 
+understand how it works. Start brainstorming with your partner how you 
+can transform this into the MapReduce framework.</li>
+	<ul class="update">
+	  <li>Your MapReduce code will likely look nothing like the BfsReference solver!</li>
+	  <li>You will not have <code>pos_to_level</code> and <code>level_to_pos</code> dictionaries, instead you will keep track of this information through a Spark RDD which contains (key, value) pairs.</li>
+	  </ul>
+	<li>Review lab 8 to remind yourself how MapReduce looks and works in Python-Spark.</li>
+	<li>Read the section below, "Notes on Spark" and review the Spark documentation to become familiar with the tools you can use.</li>
+	<li>Implement a correct and reasonably efficient solution that works for at least 2x2 and maybe 3x3.
+      <ul>
+        <li>Remember that MapReduce can make use of multiple functions (Don't try to do everything in one function!).</li>
+        <li>Before you start coding, make sure you yourself understand 
+what you want to pass into your functions (i.e. figure out what keys and
+ values you want to use).</li>
+        <li>Don't forget that Reduce typically groups the dataset by keys and Spark provides functions that allow you to do this on an RDD.</li>
+      </ul>
+    </li>
+    <li>
+      <strong>Be sure to test your code on the 5x2 puzzle!</strong>
+      If you find that you are reaching the benchmark for the 2x2 and 3x3, but not the 5x2, be sure to review the <a href="#spark-notes">Spark Notes</a> -- specifically the Advanced Notes portion to help optimize your code.
+    </li>
+
+      </ul>
+
+<h4 id="followup-questions"> Follow Up Questions to Submit </h4>
+<p> Answer the following questions individually. You may discuss with your partner but you have to answer the questions on your own. Your answers must be in the file named <code>proj2-1.txt</code>.
+</p><p>
+  1. Some games (e.g., <a href="https://en.wikipedia.org/wiki/Rush_Hour_%28board_game%29">Rush Hour</a>, <a href="https://en.wikipedia.org/wiki/Klotski">Klotski</a>, etc.) do not have a <i>single</i> solution, but a <i>set</i> of solution positions (and a single starting position). This is because those puzzles only care about the final position of a <i>particular</i> block, and don't care about the location of the other blocks.  In terms of an API change, <code>solution()</code> wouldn't be a no-argument function that returns the single solution position anymore, but instead be a predicate that took <i>in</i> a position and returned whether it was in the solution set or not.  Your friend suggests to generate <i>all</i> the permutations of blocks (or whatever else is being moved / rotated / changed in the puzzle) <span style="color:red">that satisfy the solution predicate</span>, call them all solutions (level = 0), and proceed normally.
+
+  </p><div style="color:red">
+    <table style="color:red" border="1">
+      <tbody><tr>
+	<td>1</td>
+	<td>2</td>
+      </tr>
+      <tr>
+	<td>3</td>
+	<td>-</td>
+      </tr>
+      </tbody></table>
+    For example, let's say a 2x2 puzzle is considered to be solved when 
+"1", in the upper left slot (and the position of the other positions 
+doesn't matter).  So the friend is suggesting to put "1" in the upper 
+left, then write custom code to permute "(2,3,-)" around all the other 
+positions, create positions for all of those permutations, declare all 
+of those positions as solutions, and proceed to strongly solve.
+  </div>
+  <br>
+
+  What is one potential problem with this idea? (Hint: take a look at 
+the number of positions in the 2x2 final solution and compare that with 
+all the ways of permuting four pieces).
+<p></p>
+
+<p>
+2. What's a better algorithm to solve these kinds of puzzles?  How would you modify your original solver?
+</p>
+
+<p>
+3. On the same note, what needs to be changed to solve loop-free puzzles, like <a href="https://en.wikipedia.org/wiki/Peg_solitaire">Peg Solitaire</a>.
+ For every position, rather than the distance to the solution, what 
+might you store?  What changes would you make to your solver? In the 
+case of Peg Solitaire, would it change the memory requirements of your 
+solver?
+</p>
+
+      <h3 id="debugging">Debugging and Testing</h3>
+
+      <p>You should test your code on the computers in Lab 215. Your program will be graded in one of those computers as indicated in class.</p>
+
+      <p>The provided <code>Makefile</code> gives you the ability to run
+ your solver on a few common cases. Be sure to understand all of the 
+"targets" provided to you in the Makefile. For example:</p>
+
+    <pre class="output">$ <span class="input">make run-small <span class="comment"># Runs your solver with a Sliding puzzle of size 2x2</span></span></pre>
+
+      <p>In the <code>ref_out</code> directory, we have also provided you with the correct output and format we expect for the 2x2 Sliding puzzle. 
+	You can use this small case as a basic sanity check and to verify that your output format is correct.</p>
+
+
+      <p> While you are working on the project, we encourage you to keep your code under version control. <b>However,
+ if
+	you are using a hosted repository (i.e. GitHub, BitBucket, etc), it 
+MUST be private.</a>. </p>
+
+      <p>
+	Before you submit, <b>make sure you test your code on Lab 215.</b> We will be grading your code there.
+	<b><font color="red">IF YOUR PROGRAM THROWS AN EXCEPTION/ERROR WHICH 
+COULD HAVE BEEN REVEALED BY SIMPLE TESTING, YOU WILL AUTOMATICALLY GET A
+ ZERO FOR THAT PORTION OF THE ASSIGNMENT</font></b>.
+	There is no excuse not to test your code.
+      </p>
+
+      <h3 id="grading"> Grading </h3>
+      <ul>
+        <li>First, your code will be graded on the correctness of the produced solution. This will be done by comparing your
+          output file containing the solved values with the file that the staff solution outputs.</li>
+	<li style="color:red;">Second, we will ensure your code is actually 
+running in parallel, that is, that it makes use of Spark RDDs, and its 
+parallel transformations, map and reduce.</li>
+	<ul>
+	  <li>It is not acceptable to implement a serial algorithm or a serial version of the <code>SlidingBfsReference.py</code>
+ in Spark. Such solutions will receive NO credit.</li>
+	  </ul>
+        <li>Thirdly, we will be comparing the runtime of your code against the staff solution.
+          <ul>
+            <li>We will run your code with the <code>MASTER</code> set to <code>local[8]</code> (runs locally with 8 cores). This is the default with our Makefile.</li>
+	    <li> Here are some approximate benchmarks of our staff solution (measured on an uncrowded hive machine)</li>
+	      <ul>
+		<li> 2x2: &#8804; 30 seconds</li>
+		<li> 3x3: &#8804; 1 minute</li>
+		<li> 5x2: &#8804; 4 minutes</li>
+	      </ul>
+        <li><strong>Be sure to test all (2x2, 3x3, 5x2) puzzle sizes as 
+passing the 3x3 benchmark does not mean you will necessarily reach the 
+5x2 benchmark as well.</strong></li>
+          </ul></li>
+	<li> Finally, a portion of your grade will correspond to your answers to the follow up questions in <code>proj2-1.txt</code>
+      </li></ul>
+
+      <h4>Other Grading Notes</h4>
+      <ul>
+	<li>We will award substantial partial credit based on how close your solution is to these benchmarks.</li>
+	<li>You are required comment your code, including any helper functions 
+you define. This helps our graders easily understand your thinking, and 
+helps us give you partial credit.</li>
+	<li>If you can consistently achieve significantly better performance 
+than our staff solution, feel free to let us know! (in a private Slack message).</li>
+      </ul>
+
+      <h3>Submission</h3>
+
+      <p>proj2-1 is due Sunday (26/04/2015). You should just be turning in <code>SlidingBfsSpark.py</code> and <code>proj2-1.txt</code>.
+
+<br>
+<hr>
+<h2 id="spark-notes"> Notes On Spark </h2>
+<p>We highly recommend you read and understand this short <a href="http://spark.apache.org/docs/latest/programming-guide.html">Spark programming guide</a>, especially the section on <a href="http://spark.apache.org/docs/latest/programming-guide.html#working-with-key-value-pairs">key-value pairs and their transformations</a>.
+ After all, if you choose to put Apache Spark on your résumé, you want 
+to be able to answer any questions that are thrown your way ;).</p>
+
+Finally, the other resource that will come in handy is the detailed Spark-Python API, available at: <a href="http://spark.apache.org/docs/latest/api/python/pyspark-module.html">http://spark.apache.org/docs/latest/api/python/pyspark-module.html</a>
+
+<h4>Global Variables</h4>
+<p>In the lab, we mentioned global variables should be avoided in Spark.
+ This isn't entirely true - let us elaborate on this a bit more. Global 
+variables <em>may</em> cause poor performance because they require 
+information to be shared among the nodes in your cluster. If this global
+ variable is frequently being changed, this data must frequently be 
+copied to and from nodes, which hurts parallelism. However, if your 
+global variable is simply a read-only constant, (for example, the width 
+and height of the board), that is fine.</p>
+
+<p>If you have some information that is to be shared and processed by 
+all the nodes in parallel, you should be using an RDD (resilient 
+distributed dataset), the primary abstraction in Spark.</p>
+
+<p>For the curious, Spark provides other abstractions for <a href="http://spark.apache.org/docs/0.9.1/scala-programming-guide.html#shared-variables">shared variables</a>,
+ namely broadcast variables and accumulators. Our solution does not make
+ use of these, but you are free to try them if you wish.</p>
+
+<h3>Advanced Notes</h3>
+<p> After getting a basic solution working, use these techniques to further optimize your performance.</p>
+
+<h4>Lazy Evaluation</h4>
+<p>As you should understand from reading the Spark docs, transformations on RDDs in Spark are <em>lazy</em>. The result is only computed when it is required by some <a href="http://spark.apache.org/docs/0.9.1/scala-programming-guide.html#actions">action</a>, such as <code>count</code> or <code>saveAsTextFile</code>.</p>
+
+<p>You may find that you achieve better performance by not 
+"materializing" your RDD for each iteration of your MapReduce job -- 
+that is, you may allow several iterations of transformations to occur 
+before calling an action on it. Spark is able to optimize the collection
+ of transformations better than each transformation individually.
+</p>
+
+<h4>Partitioning</h4>
+<p>An RDD is a collection of elements partitioned across nodes in a 
+cluster. By default, Spark simply splits up the RDD into sequential 
+partitions and ships them off to individual nodes. When it is time to 
+reduce, KV pairs may need to be shipped across nodes in the shuffling 
+phase. Because shuffling requires moving data around (sometimes over a 
+network), it is a comparatively expensive operation.</p>
+
+<p>You may find that you can achieve better performance by partitioning 
+your dataset in a more intelligent way. This allows some of the reducing
+ to take place locally on a particular node, rather than requiring it to
+ be shuffled. See the <a href="http://spark.apache.org/docs/latest/api/python/pyspark.rdd.RDD-class.html#partitionBy"><code>partitionBy</code></a> operation on RDDs for more info.</p>
+<p></p>
+
+<p>As a final note, since repartitioning itself requires reshuffling 
+large chunks of the data, it may be useful to not repartition on <em>every</em> iteration, but rather every <em>k</em> iterations, where you decide what <em>k</em> is.</p>
+  </div>
+
+</body></html>
